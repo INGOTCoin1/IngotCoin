@@ -1,376 +1,151 @@
-contract DSNote {
-    event LogNote(
-        bytes4   indexed  sig,
-        address  indexed  guy,
-        bytes32  indexed  foo,
-        bytes32  indexed  bar,
-	uint	 	  wad,
-        bytes             fax
-    ) anonymous;
+contract Token {
 
-    modifier note {
-        bytes32 foo;
-        bytes32 bar;
+    /// @return total amount of tokens
+    function totalSupply() constant returns (uint256 supply) {}
 
-        assembly {
-            foo := calldataload(4)
-            bar := calldataload(36)
-        }
+    /// @param _owner The address from which the balance will be retrieved
+    /// @return The balance
+    function balanceOf(address _owner) constant returns (uint256 balance) {}
 
-        LogNote(msg.sig, msg.sender, foo, bar, msg.value, msg.data);
+    /// @notice send `_value` token to `_to` from `msg.sender`
+    /// @param _to The address of the recipient
+    /// @param _value The amount of token to be transferred
+    /// @return Whether the transfer was successful or not
+    function transfer(address _to, uint256 _value) returns (bool success) {}
 
-        _;
-    }
+    /// @notice send `_value` token to `_to` from `_from` on the condition it is approved by `_from`
+    /// @param _from The address of the sender
+    /// @param _to The address of the recipient
+    /// @param _value The amount of token to be transferred
+    /// @return Whether the transfer was successful or not
+    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {}
+
+    /// @notice `msg.sender` approves `_addr` to spend `_value` tokens
+    /// @param _spender The address of the account able to transfer the tokens
+    /// @param _value The amount of wei to be approved for transfer
+    /// @return Whether the approval was successful or not
+    function approve(address _spender, uint256 _value) returns (bool success) {}
+
+    /// @param _owner The address of the account owning tokens
+    /// @param _spender The address of the account able to transfer the tokens
+    /// @return Amount of remaining tokens allowed to spent
+    function allowance(address _owner, address _spender) constant returns (uint256 remaining) {}
+
+    event Transfer(address indexed _from, address indexed _to, uint256 _value);
+    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
 }
 
-contract DSAuthority {
-    function canCall(
-        address src, address dst, bytes4 sig
-    ) constant returns (bool);
-}
 
-contract DSAuthEvents {
-    event LogSetAuthority (address indexed authority);
-    event LogSetOwner     (address indexed owner);
-}
+/*
+This implements ONLY the standard functions and NOTHING else.
+For a token like you would want to deploy in something like Mist, see HumanStandardToken.sol.
 
-contract DSAuth is DSAuthEvents {
-    DSAuthority  public  authority;
-    address      public  owner;
+If you deploy this, you won't have anything useful.
 
-    function DSAuth() {
-        owner = msg.sender;
-        LogSetOwner(msg.sender);
-    }
+Implements ERC 20 Token standard: https://github.com/ethereum/EIPs/issues/20
+.*/
 
-    function setOwner(address owner_)
-        auth
-    {
-        owner = owner_;
-        LogSetOwner(owner);
-    }
+contract StandardToken is Token {
 
-    function setAuthority(DSAuthority authority_)
-        auth
-    {
-        authority = authority_;
-        LogSetAuthority(authority);
-    }
-
-    modifier auth {
-        assert(isAuthorized(msg.sender, msg.sig));
-        _;
-    }
-
-    modifier authorized(bytes4 sig) {
-        assert(isAuthorized(msg.sender, sig));
-        _;
-    }
-
-    function isAuthorized(address src, bytes4 sig) internal returns (bool) {
-        if (src == address(this)) {
+    function transfer(address _to, uint256 _value) returns (bool success) {
+        //Default assumes totalSupply can't be over max (2^256 - 1).
+        //If your token leaves out totalSupply and can issue more tokens as time goes on, you need to check if it doesn't wrap.
+        //Replace the if with this one instead.
+        //if (balances[msg.sender] >= _value && balances[_to] + _value > balances[_to]) {
+        if (balances[msg.sender] >= _value && _value > 0) {
+            balances[msg.sender] -= _value;
+            balances[_to] += _value;
+            Transfer(msg.sender, _to, _value);
             return true;
-        } else if (src == owner) {
+        } else { return false; }
+    }
+
+    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
+        //same as above. Replace this line with the following if you want to protect against wrapping uints.
+        //if (balances[_from] >= _value && allowed[_from][msg.sender] >= _value && balances[_to] + _value > balances[_to]) {
+        if (balances[_from] >= _value && allowed[_from][msg.sender] >= _value && _value > 0) {
+            balances[_to] += _value;
+            balances[_from] -= _value;
+            allowed[_from][msg.sender] -= _value;
+            Transfer(_from, _to, _value);
             return true;
-        } else if (authority == DSAuthority(0)) {
-            return false;
-        } else {
-            return authority.canCall(src, this, sig);
-        }
+        } else { return false; }
     }
 
-    function assert(bool x) internal {
-        if (!x) throw;
-    }
-}
-
-contract DSStop is DSAuth, DSNote {
-
-    bool public stopped;
-
-    modifier stoppable {
-        assert (!stopped);
-        _;
-    }
-    function stop() auth note {
-        stopped = true;
-    }
-    function start() auth note {
-        stopped = false;
+    function balanceOf(address _owner) constant returns (uint256 balance) {
+        return balances[_owner];
     }
 
-}
-
-contract DSMath {
-    
-    /*
-    standard uint256 functions
-     */
-
-    function add(uint256 x, uint256 y) constant internal returns (uint256 z) {
-        assert((z = x + y) >= x);
-    }
-
-    function sub(uint256 x, uint256 y) constant internal returns (uint256 z) {
-        assert((z = x - y) <= x);
-    }
-
-    function mul(uint256 x, uint256 y) constant internal returns (uint256 z) {
-        assert((z = x * y) >= x);
-    }
-
-    function div(uint256 x, uint256 y) constant internal returns (uint256 z) {
-        z = x / y;
-    }
-
-    function min(uint256 x, uint256 y) constant internal returns (uint256 z) {
-        return x <= y ? x : y;
-    }
-    function max(uint256 x, uint256 y) constant internal returns (uint256 z) {
-        return x >= y ? x : y;
-    }
-
-    /*
-    uint128 functions (h is for half)
-     */
-
-
-    function hadd(uint128 x, uint128 y) constant internal returns (uint128 z) {
-        assert((z = x + y) >= x);
-    }
-
-    function hsub(uint128 x, uint128 y) constant internal returns (uint128 z) {
-        assert((z = x - y) <= x);
-    }
-
-    function hmul(uint128 x, uint128 y) constant internal returns (uint128 z) {
-        assert((z = x * y) >= x);
-    }
-
-    function hdiv(uint128 x, uint128 y) constant internal returns (uint128 z) {
-        z = x / y;
-    }
-
-    function hmin(uint128 x, uint128 y) constant internal returns (uint128 z) {
-        return x <= y ? x : y;
-    }
-    function hmax(uint128 x, uint128 y) constant internal returns (uint128 z) {
-        return x >= y ? x : y;
-    }
-
-
-    /*
-    int256 functions
-     */
-
-    function imin(int256 x, int256 y) constant internal returns (int256 z) {
-        return x <= y ? x : y;
-    }
-    function imax(int256 x, int256 y) constant internal returns (int256 z) {
-        return x >= y ? x : y;
-    }
-
-    /*
-    WAD math
-     */
-
-    uint128 constant WAD = 10 ** 18;
-
-    function wadd(uint128 x, uint128 y) constant internal returns (uint128) {
-        return hadd(x, y);
-    }
-
-    function wsub(uint128 x, uint128 y) constant internal returns (uint128) {
-        return hsub(x, y);
-    }
-
-    function wmul(uint128 x, uint128 y) constant internal returns (uint128 z) {
-        z = cast((uint256(x) * y + WAD / 2) / WAD);
-    }
-
-    function wdiv(uint128 x, uint128 y) constant internal returns (uint128 z) {
-        z = cast((uint256(x) * WAD + y / 2) / y);
-    }
-
-    function wmin(uint128 x, uint128 y) constant internal returns (uint128) {
-        return hmin(x, y);
-    }
-    function wmax(uint128 x, uint128 y) constant internal returns (uint128) {
-        return hmax(x, y);
-    }
-
-    /*
-    RAY math
-     */
-
-    uint128 constant RAY = 10 ** 27;
-
-    function radd(uint128 x, uint128 y) constant internal returns (uint128) {
-        return hadd(x, y);
-    }
-
-    function rsub(uint128 x, uint128 y) constant internal returns (uint128) {
-        return hsub(x, y);
-    }
-
-    function rmul(uint128 x, uint128 y) constant internal returns (uint128 z) {
-        z = cast((uint256(x) * y + RAY / 2) / RAY);
-    }
-
-    function rdiv(uint128 x, uint128 y) constant internal returns (uint128 z) {
-        z = cast((uint256(x) * RAY + y / 2) / y);
-    }
-
-    function rpow(uint128 x, uint64 n) constant internal returns (uint128 z) {
-        // This famous algorithm is called "exponentiation by squaring"
-        // and calculates x^n with x as fixed-point and n as regular unsigned.
-        //
-        // It's O(log n), instead of O(n) for naive repeated multiplication.
-        //
-        // These facts are why it works:
-        //
-        //  If n is even, then x^n = (x^2)^(n/2).
-        //  If n is odd,  then x^n = x * x^(n-1),
-        //   and applying the equation for even x gives
-        //    x^n = x * (x^2)^((n-1) / 2).
-        //
-        //  Also, EVM division is flooring and
-        //    floor[(n-1) / 2] = floor[n / 2].
-
-        z = n % 2 != 0 ? x : RAY;
-
-        for (n /= 2; n != 0; n /= 2) {
-            x = rmul(x, x);
-
-            if (n % 2 != 0) {
-                z = rmul(z, x);
-            }
-        }
-    }
-
-    function rmin(uint128 x, uint128 y) constant internal returns (uint128) {
-        return hmin(x, y);
-    }
-    function rmax(uint128 x, uint128 y) constant internal returns (uint128) {
-        return hmax(x, y);
-    }
-
-    function cast(uint256 x) constant internal returns (uint128 z) {
-        assert((z = uint128(x)) == x);
-    }
-
-}
-
-contract ERC20 {
-    function totalSupply() constant returns (uint supply);
-    function balanceOf( address who ) constant returns (uint value);
-    function allowance( address owner, address spender ) constant returns (uint _allowance);
-
-    function transfer( address to, uint value) returns (bool ok);
-    function transferFrom( address from, address to, uint value) returns (bool ok);
-    function approve( address spender, uint value ) returns (bool ok);
-
-    event Transfer( address indexed from, address indexed to, uint value);
-    event Approval( address indexed owner, address indexed spender, uint value);
-}
-
-contract DSTokenBase is ERC20, DSMath {
-    uint256                                            _supply;
-    mapping (address => uint256)                       _balances;
-    mapping (address => mapping (address => uint256))  _approvals;
-    
-    function DSTokenBase(uint256 supply) {
-        _balances[msg.sender] = supply;
-        _supply = supply;
-    }
-    
-    function totalSupply() constant returns (uint256) {
-        return _supply;
-    }
-    function balanceOf(address src) constant returns (uint256) {
-        return _balances[src];
-    }
-    function allowance(address src, address guy) constant returns (uint256) {
-        return _approvals[src][guy];
-    }
-    
-    function transfer(address dst, uint wad) returns (bool) {
-        assert(_balances[msg.sender] >= wad);
-        
-        _balances[msg.sender] = sub(_balances[msg.sender], wad);
-        _balances[dst] = add(_balances[dst], wad);
-        
-        Transfer(msg.sender, dst, wad);
-        
-        return true;
-    }
-    
-    function transferFrom(address src, address dst, uint wad) returns (bool) {
-        assert(_balances[src] >= wad);
-        assert(_approvals[src][msg.sender] >= wad);
-        
-        _approvals[src][msg.sender] = sub(_approvals[src][msg.sender], wad);
-        _balances[src] = sub(_balances[src], wad);
-        _balances[dst] = add(_balances[dst], wad);
-        
-        Transfer(src, dst, wad);
-        
-        return true;
-    }
-    
-    function approve(address guy, uint256 wad) returns (bool) {
-        _approvals[msg.sender][guy] = wad;
-        
-        Approval(msg.sender, guy, wad);
-        
+    function approve(address _spender, uint256 _value) returns (bool success) {
+        allowed[msg.sender][_spender] = _value;
+        Approval(msg.sender, _spender, _value);
         return true;
     }
 
+    function allowance(address _owner, address _spender) constant returns (uint256 remaining) {
+      return allowed[_owner][_spender];
+    }
+
+    mapping (address => uint256) balances;
+    mapping (address => mapping (address => uint256)) allowed;
+    uint256 public totalSupply;
 }
 
-contract DSToken is DSTokenBase(0), DSStop {
+/*
+This Token Contract implements the standard token functionality (https://github.com/ethereum/EIPs/issues/20) as well as the following OPTIONAL extras intended for use by humans.
 
-    bytes32  public  symbol;
-    uint256  public  decimals = 8; // standard token precision. override to customize
+In other words. This is intended for deployment in something like a Token Factory or Mist wallet, and then used by humans.
+Imagine coins, currencies, shares, voting weight, etc.
+Machine-based, rapid creation of many tokens would not necessarily need these extra features or will be minted in other manners.
 
-    function DSToken(bytes32 symbol_) {
-        symbol = symbol_;
-    }
+1) Initial Finite Supply (upon creation one specifies how much is minted).
+2) In the absence of a token registry: Optional Decimal, Symbol & Name.
+3) Optional approveAndCall() functionality to notify a contract if an approval() has occurred.
 
-    function transfer(address dst, uint wad) stoppable note returns (bool) {
-        return super.transfer(dst, wad);
-    }
-    function transferFrom(
-        address src, address dst, uint wad
-    ) stoppable note returns (bool) {
-        return super.transferFrom(src, dst, wad);
-    }
-    function approve(address guy, uint wad) stoppable note returns (bool) {
-        return super.approve(guy, wad);
-    }
+.*/
 
-    function push(address dst, uint128 wad) returns (bool) {
-        return transfer(dst, wad);
-    }
-    function pull(address src, uint128 wad) returns (bool) {
-        return transferFrom(src, msg.sender, wad);
+contract HumanStandardToken is StandardToken {
+
+    function () {
+        //if ether is sent to this address, send it back.
+        throw;
     }
 
-    function mint(uint128 wad) auth stoppable note {
-        _balances[msg.sender] = add(_balances[msg.sender], wad);
-        _supply = add(_supply, wad);
-    }
-    function burn(uint128 wad) auth stoppable note {
-        _balances[msg.sender] = sub(_balances[msg.sender], wad);
-        _supply = sub(_supply, wad);
+    /* Public variables of the token */
+
+    /*
+    NOTE:
+    The following variables are OPTIONAL vanities. One does not have to include them.
+    They allow one to customise the token contract & in no way influences the core functionality.
+    Some wallets/interfaces might not even bother to look at this information.
+    */
+    string public name;                   //fancy name: eg Simon Bucks
+    uint8 public decimals;                //How many decimals to show. ie. There could 1000 base units with 3 decimals. Meaning 0.980 SBX = 980 base units. It's like comparing 1 wei to 1 ether.
+    string public symbol;                 //An identifier: eg SBX
+    string public version = 'H0.1';       //human 0.1 standard. Just an arbitrary versioning scheme.
+
+    function HumanStandardToken(
+        uint256 _initialAmount,
+        string _tokenName,
+        uint8 _decimalUnits,
+        string _tokenSymbol
+        ) {
+        balances[msg.sender] = _initialAmount;               // Give the creator all initial tokens
+        totalSupply = _initialAmount;                        // Update total supply
+        name = _tokenName;                                   // Set the name for display purposes
+        decimals = _decimalUnits;                            // Amount of decimals for display purposes
+        symbol = _tokenSymbol;                               // Set the symbol for display purposes
     }
 
-    // Optional token name
+    /* Approves and then calls the receiving contract */
+    function approveAndCall(address _spender, uint256 _value, bytes _extraData) returns (bool success) {
+        allowed[msg.sender][_spender] = _value;
+        Approval(msg.sender, _spender, _value);
 
-    bytes32   public  name = "";
-    
-    function setName(bytes32 name_) auth {
-        name = name_;
+        //call the receiveApproval function on the contract you want to be notified. This crafts the function signature manually so one doesn't have to include a contract in here just for this.
+        //receiveApproval(address _from, uint256 _value, address _tokenContract, bytes _extraData)
+        //it is assumed that when does this that the call *should* succeed, otherwise one would use vanilla approve instead.
+        if(!_spender.call(bytes4(bytes32(sha3("receiveApproval(address,uint256,address,bytes)"))), msg.sender, _value, this, _extraData)) { throw; }
+        return true;
     }
-
 }
